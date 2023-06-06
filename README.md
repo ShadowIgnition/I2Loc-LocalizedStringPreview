@@ -2,6 +2,8 @@
 
 The `I2Preview` attribute is a custom attribute for use in Unity projects that utilize the I2 Localization framework. It allows you to display a preview of a localized string directly in the Unity Inspector for fields of type `LocalizedString`.
 
+![I2LocalizationPreview Attribute](preview.png)
+
 ## Usage
 
 To use the `I2Preview` attribute, follow these steps:
