@@ -15,10 +15,10 @@ To use the `I2Preview` attribute, follow these steps:
 ```csharp
 public class MyScript : MonoBehaviour
 {
-    [I2LocalizationPreview]                        // Auto-sizing text area
+    [I2Preview]                        // Auto-sizing text area
     public LocalizedString myAutoSizedLocalizedString;
 
-    [I2LocalizationPreview(3)]                     // Fixed line height of 3 lines
+    [I2Preview(3)]                     // Fixed line height of 3 lines
     public LocalizedString myFixedHeightLocalizedString;
 }
 ```
