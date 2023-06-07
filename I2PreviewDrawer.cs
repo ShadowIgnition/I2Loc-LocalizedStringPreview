@@ -7,11 +7,6 @@ using UnityEngine;
 public class I2PreviewDrawer : LocalizedStringDrawer
 {
 	/// <summary>
-	/// Gets the <see cref="I2PreviewAttribute"/> associated with this drawer.
-	/// </summary>
-	public I2PreviewAttribute Attribute { get { return attribute as I2PreviewAttribute; } }
-
-	/// <summary>
 	/// Draws the GUI elements for the property, then draws the GUI elements for the preview.
 	/// </summary>
 	/// <param name="rect">The position and size of the GUI element.</param>
@@ -44,11 +39,26 @@ public class I2PreviewDrawer : LocalizedStringDrawer
 
 		// Setup rect for description box
 		rect.position = new Vector2(rect.position.x, rect.position.y + rect.height);
-		rect.xMax = rect.xMax;
-		rect.height = m_Height;
 
-		// Draw the translation in a text area
-		EditorGUI.TextArea(rect, translation, EditorStyles.textArea);
+		if (m_Height != m_ScrollViewHeight)
+		{
+			rect.height = m_Height;
+			Rect content = GetRect(rect, true);
+
+			// Adjust xMax to account for vertical scrollbar
+			content.xMax -= 14;
+
+			using (var scrollScope = new GUI.ScrollViewScope(rect, scrollPos, content))
+			{
+				scrollPos = scrollScope.scrollPosition;
+				GUI.Box(content, translation, EditorStyles.textArea);
+			}
+		}
+		else
+		{
+			// Draw the translation in a text area
+			GUI.Box(GetRect(rect, false), translation, EditorStyles.textArea);
+		}
 	}
 
 	/// <summary>
@@ -75,6 +85,17 @@ public class I2PreviewDrawer : LocalizedStringDrawer
 	{
 		// Check if the property type is valid (LocalizedString)
 		return property.type == nameof(LocalizedString);
+	}
+
+	/// <summary>
+	/// Gets the rect for drawing the translation area.
+	/// </summary>
+	/// <param name="position">The position of the drawer in the Inspector.</param>
+	/// <param name="isScrollView">Flag indicating if the drawer is part of a scroll view.</param>
+	/// <returns>The rect for drawing the translation area.</returns>
+	Rect GetRect(Rect position, bool isScrollView)
+	{
+		return new Rect(position.x, position.y, position.width, isScrollView ? m_ScrollViewHeight : m_Height);
 	}
 
 	/// <summary>
@@ -109,21 +130,42 @@ public class I2PreviewDrawer : LocalizedStringDrawer
 		if (Attribute.LineHeight > 0)
 		{
 			// If a custom line height is specified, use it
-			m_Height = Attribute.LineHeight * GUI.skin.textArea.lineHeight;
+			m_Height = GetPaddedLineHeight(Attribute.LineHeight);
+			m_ScrollViewHeight = m_Height;
 		}
 		else
 		{
 			// Calculate the height of the text area
-			m_Height = GUI.skin.textArea.CalcHeight(new GUIContent(translation), width);
+			m_Height = GUI.skin.textArea.CalcHeight(new GUIContent(translation), width) + (GUI.skin.textArea.lineHeight / 2);
+
+			// Store the unclamped height, so we can use for a scroll view later if needed
+			m_ScrollViewHeight = m_Height;
+
 			// Clamp the height within the specified range (Don't want to be able to make the editor preview too big)
-			m_Height = Mathf.Clamp(m_Height, GUI.skin.textArea.lineHeight * AUTO_MIN_HEIGHT, GUI.skin.textArea.lineHeight * AUTO_MAX_HEIGHT);
+			m_Height = Mathf.Clamp(m_Height, GetPaddedLineHeight(AUTO_MIN_HEIGHT), GetPaddedLineHeight(AUTO_MAX_HEIGHT));
 		}
 	}
 
-	// Member variables and constants
+	/// <summary>
+	/// Gets the padded line height based on the number of lines.
+	/// </summary>
+	/// <param name="lineCount">The number of lines.</param>
+	/// <returns>The padded line height.</returns>
+	float GetPaddedLineHeight(uint lineCount)
+	{
+		return (GUI.skin.textArea.lineHeight * lineCount) + (GUI.skin.textArea.lineHeight / 2);
+	}
 
+	Vector2 scrollPos; // Current Scroll position
 	float m_Height;  // Height of the translation text area
-	const int AUTO_MAX_HEIGHT = 5;  // Maximum number of lines for the text area
-	const int AUTO_MIN_HEIGHT = 2;  // Minimum number of lines for the text area
+	float m_ScrollViewHeight;  // Height of the translation text area
+
+	const uint AUTO_MAX_HEIGHT = 5;  // Maximum number of lines for the text area
+	const uint AUTO_MIN_HEIGHT = 2;  // Minimum number of lines for the text area
 	const string RelativeTermPropertyPath = "mTerm";  // Relative path to the term property
+
+	/// <summary>
+	/// Gets the <see cref="I2PreviewAttribute"/> associated with this drawer.
+	/// </summary>
+	I2PreviewAttribute Attribute { get { return attribute as I2PreviewAttribute; } }
 }
