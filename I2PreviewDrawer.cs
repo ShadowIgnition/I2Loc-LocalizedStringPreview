@@ -1,4 +1,5 @@
-﻿using I2.Loc;
+// https://github.com/ShadowIgnition/I2Loc-LocalizedStringPreview
+using I2.Loc;
 using UnityEditor;
 using UnityEngine;
 
