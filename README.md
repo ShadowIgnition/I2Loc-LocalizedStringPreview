@@ -10,7 +10,7 @@ To use the `I2Preview` attribute, follow these steps:
 
 1. Make sure you have the I2 Localization asset integrated into your Unity project. If you haven't already done so, you can find the asset here: https://assetstore.unity.com/packages/tools/localization/i2-localization-14884
 
-2. In your Unity script, add the `[I2Preview]` attribute in front of the `LocalizedString` field you want to display a preview for. You can optionally provide a line height value for fixed line height, or leave it as 0 for auto-sizing. For example:
+2. In your Unity script, add the `I2Preview` attribute in front of the `LocalizedString` field you want to display a preview for. You can optionally provide a line height value for fixed line height, or leave it as 0 for auto-sizing. For example:
 
 ```csharp
 public class MyScript : MonoBehaviour
