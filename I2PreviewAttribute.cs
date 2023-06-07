@@ -1,3 +1,4 @@
+// https://github.com/ShadowIgnition/I2Loc-LocalizedStringPreview
 using UnityEngine;
 
 /// <summary>
