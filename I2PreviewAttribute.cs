@@ -2,7 +2,7 @@
 using UnityEngine;
 
 /// <summary>
-/// Custom attribute class used in the context of the previous script.
+/// Custom attribute class used for creating a preview of I2 Localization's LocalizedString Type
 /// </summary>
 public class I2PreviewAttribute : PropertyAttribute
 {
