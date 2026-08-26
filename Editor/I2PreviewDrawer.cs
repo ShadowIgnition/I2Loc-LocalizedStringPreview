@@ -1,10 +1,9 @@
 // https://github.com/ShadowIgnition/I2Loc-LocalizedStringPreview
-using I2.Loc;
 using UnityEditor;
 using UnityEngine;
 
 [CustomPropertyDrawer(typeof(I2PreviewAttribute))]
-public class I2PreviewDrawer : LocalizedStringDrawer
+public class I2PreviewDrawer : PropertyDrawer
 {
 	/// <summary>
 	/// Draws the GUI elements for the property, then draws the GUI elements for the preview.
@@ -24,12 +23,12 @@ public class I2PreviewDrawer : LocalizedStringDrawer
 		{
 			// If the type is invalid, display an error message in a help box
 			rect.position = new Vector2(rect.position.x, rect.position.y + EditorGUIUtility.singleLineHeight);
-			EditorGUI.HelpBox(rect, property.name + " type not supported, must be " + nameof(LocalizedString), MessageType.Error);
+			EditorGUI.HelpBox(rect, property.name + " type not supported, must be I2.Loc.LocalizedString", MessageType.Error);
 			return;
 		}
 
 		// Call the base implementation of OnGUI to draw the default property field
-		base.OnGUI(rect, property, label);
+		m_Bridge.OnGUI(rect, property, label, fieldInfo);
 
 		// Get the translation for the property
 		string translation = GetTranslation(property);
@@ -73,7 +72,7 @@ public class I2PreviewDrawer : LocalizedStringDrawer
 
 		// Calculate the base height using the base implementation
 		// Add the height of the translation text area
-		return base.GetPropertyHeight(property, label) + m_Height;
+		return m_Bridge.GetPropertyHeight(property, label, fieldInfo) + m_Height;
 	}
 
 	/// <summary>
@@ -81,10 +80,10 @@ public class I2PreviewDrawer : LocalizedStringDrawer
 	/// </summary>
 	/// <param name="property">The serialized property.</param>
 	/// <returns><c>true</c> if the type is valid; otherwise, <c>false</c>.</returns>
-	static bool IsValidType(SerializedProperty property)
+	bool IsValidType(SerializedProperty property)
 	{
 		// Check if the property type is valid (LocalizedString)
-		return property.type == nameof(LocalizedString);
+		return m_Bridge.IsLocalizedString(property, fieldInfo);
 	}
 
 	/// <summary>
@@ -114,7 +113,7 @@ public class I2PreviewDrawer : LocalizedStringDrawer
 		if (!string.IsNullOrWhiteSpace(termProp.stringValue))
 		{
 			// Retrieve the translation from the LocalizationManager based on the term
-			translation = LocalizationManager.GetTranslation(termProp.stringValue);
+			m_Bridge.TryGetTranslation(termProp.stringValue, out translation);
 		}
 
 		return translation;
@@ -159,6 +158,7 @@ public class I2PreviewDrawer : LocalizedStringDrawer
 	Vector2 scrollPos; // Current Scroll position
 	float m_Height;  // Height of the translation text area
 	float m_ScrollViewHeight;  // Height of the translation text area
+	readonly I2LocalizationBridge m_Bridge = new I2LocalizationBridge();
 
 	const uint AUTO_MAX_HEIGHT = 5;  // Maximum number of lines for the text area
 	const uint AUTO_MIN_HEIGHT = 2;  // Minimum number of lines for the text area
