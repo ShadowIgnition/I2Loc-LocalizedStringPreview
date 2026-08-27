@@ -138,10 +138,12 @@ public class I2PreviewDrawer : PropertyDrawer
 			+ state.DesiredPreviewHeight;
 	}
 
+#if !UNITY_6000_0_OR_NEWER
 	public override bool CanCacheInspectorGUI(SerializedProperty property)
 	{
 		return false;
 	}
+#endif
 
 	bool IsValidType(SerializedProperty property, PreviewState state)
 	{
