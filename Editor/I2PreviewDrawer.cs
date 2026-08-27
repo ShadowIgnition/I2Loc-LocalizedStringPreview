@@ -18,7 +18,6 @@ public class I2PreviewDrawer : PropertyDrawer
 	static readonly GUIContent InvalidPropertyContent = new GUIContent(InvalidPropertyMessage);
 	static readonly I2LocalizationBridge LocalizationEventBridge = new I2LocalizationBridge();
 
-	readonly I2LocalizationBridge m_Bridge = new I2LocalizationBridge();
 	readonly Dictionary<string, PreviewState> m_States =
 		new Dictionary<string, PreviewState>();
 	static int s_TranslationRevision;
@@ -36,19 +35,19 @@ public class I2PreviewDrawer : PropertyDrawer
 		PreviewState state = GetState(property);
 		state.LastKnownWidth = position.width;
 
-		if (!IsValidType(property))
+		if (!IsValidType(property, state))
 		{
 			EditorGUI.HelpBox(position, InvalidPropertyMessage, MessageType.Error);
 			return;
 		}
 
-		float baseHeight = m_Bridge.GetPropertyHeight(property, label, fieldInfo);
+		float baseHeight = state.Bridge.GetPropertyHeight(property, label, fieldInfo);
 		Rect baseRect = new Rect(
 			position.x,
 			position.y,
 			position.width,
 			Mathf.Min(baseHeight, position.height));
-		m_Bridge.OnGUI(baseRect, property, label, fieldInfo);
+		state.Bridge.OnGUI(baseRect, property, label, fieldInfo);
 
 		float previewY = baseRect.yMax + EditorGUIUtility.standardVerticalSpacing;
 		float allocatedPreviewHeight = Mathf.Max(0f, position.yMax - previewY);
@@ -94,12 +93,12 @@ public class I2PreviewDrawer : PropertyDrawer
 
 	public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
 	{
-		if (!IsValidType(property))
+		PreviewState state = GetState(property);
+		if (!IsValidType(property, state))
 		{
 			return GetInvalidPropertyHeight(property);
 		}
 
-		PreviewState state = GetState(property);
 		RefreshPreview(property, state);
 
 		GUIStyle style = EditorStyles.textArea;
@@ -118,7 +117,7 @@ public class I2PreviewDrawer : PropertyDrawer
 			lineHeight,
 			RequestedLineCount);
 
-		return m_Bridge.GetPropertyHeight(property, label, fieldInfo)
+		return state.Bridge.GetPropertyHeight(property, label, fieldInfo)
 			+ EditorGUIUtility.standardVerticalSpacing
 			+ state.DesiredPreviewHeight;
 	}
@@ -128,16 +127,16 @@ public class I2PreviewDrawer : PropertyDrawer
 		return false;
 	}
 
-	bool IsValidType(SerializedProperty property)
+	bool IsValidType(SerializedProperty property, PreviewState state)
 	{
-		return m_Bridge.IsLocalizedString(property, fieldInfo);
+		return state.Bridge.IsLocalizedString(property, fieldInfo);
 	}
 
 	void RefreshPreview(SerializedProperty property, PreviewState state)
 	{
 		I2LocalizedStringData data;
 		bool hasMultipleDifferentValues;
-		if (!m_Bridge.TryReadData(property, out data, out hasMultipleDifferentValues))
+		if (!state.Bridge.TryReadData(property, out data, out hasMultipleDifferentValues))
 		{
 			state.SetPreview(
 				default(I2LocalizedStringData),
@@ -148,7 +147,7 @@ public class I2PreviewDrawer : PropertyDrawer
 			return;
 		}
 
-		string language = m_Bridge.CurrentLanguage;
+		string language = state.Bridge.CurrentLanguage;
 		if (state.IsCurrent(data, hasMultipleDifferentValues, language, s_TranslationRevision))
 		{
 			return;
@@ -157,7 +156,7 @@ public class I2PreviewDrawer : PropertyDrawer
 		string translation = MixedValuesPreview;
 		bool canCacheTranslation = true;
 		if (!hasMultipleDifferentValues &&
-			!m_Bridge.TryGetTranslation(data, out translation))
+			!state.Bridge.TryGetTranslation(data, out translation))
 		{
 			translation = TranslationUnavailablePreview;
 			canCacheTranslation = false;
@@ -303,6 +302,7 @@ public class I2PreviewDrawer : PropertyDrawer
 
 	sealed class PreviewState
 	{
+		internal readonly I2LocalizationBridge Bridge = new I2LocalizationBridge();
 		internal readonly GUIContent Content = new GUIContent(string.Empty);
 		internal Vector2 ScrollPosition;
 		internal float DesiredPreviewHeight;

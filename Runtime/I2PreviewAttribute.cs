@@ -14,20 +14,13 @@ public class I2PreviewAttribute : PropertyAttribute
 	/// <summary>
 	/// Initializes a new instance of the <see cref="I2PreviewAttribute"/> class with the default auto-sizing line height.
 	/// </summary>
-	public I2PreviewAttribute()
-#if UNITY_6000_0_OR_NEWER
-		: base(true)
-#endif
-	{ }
+	public I2PreviewAttribute() { }
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="I2PreviewAttribute"/> class with a custom line height.
 	/// </summary>
 	/// <param name="lineHeight">The line height for the localized string translation. A value of 0 indicates auto-sizing.</param>
 	public I2PreviewAttribute(uint lineHeight)
-#if UNITY_6000_0_OR_NEWER
-		: base(true)
-#endif
 	{
 		LineHeight = lineHeight;
 	}
