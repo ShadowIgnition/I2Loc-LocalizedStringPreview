@@ -1,0 +1,17 @@
+{
+  "name": "ShadowIgnition.I2LocalizedStringPreview.Editor",
+  "references": [
+    "GUID:4c44f961e0484873bc48f83e3cd4f836"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

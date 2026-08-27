@@ -1,0 +1,28 @@
+{
+  "name": "com.shadowignition.i2-localized-string-preview",
+  "version": "1.1.0-preview.1",
+  "displayName": "I2LocalizationPreview Attribute",
+  "description": "Shows the current I2 LocalizedString translation beneath fields in the Unity Inspector.",
+  "unity": "2021.1",
+  "license": "MIT",
+  "dependencies": {},
+  "keywords": [
+    "i2",
+    "localization",
+    "inspector",
+    "editor",
+    "documentation"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ShadowIgnition/I2Loc-LocalizedStringPreview.git"
+  },
+  "author": {
+    "name": "ShadowIgnition",
+    "email": "43722770+ShadowIgnition@users.noreply.github.com",
+    "url": "https://github.com/ShadowIgnition"
+  },
+  "documentationUrl": "https://github.com/ShadowIgnition/I2Loc-LocalizedStringPreview/blob/main/Documentation~/index.md",
+  "changelogUrl": "https://github.com/ShadowIgnition/I2Loc-LocalizedStringPreview/blob/main/CHANGELOG.md",
+  "licensesUrl": "https://github.com/ShadowIgnition/I2Loc-LocalizedStringPreview/blob/main/LICENSE.md"
+}

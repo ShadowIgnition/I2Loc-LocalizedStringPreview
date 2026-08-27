@@ -1,0 +1,40 @@
+# Unity-generated project data
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Build outputs
+[Bb]uild/
+[Bb]uilds/
+ExportedObj/
+*.apk
+*.aab
+*.unitypackage
+
+# IDE and generated solution files
+.vs/
+.idea/
+.vscode/
+*.csproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# OS and crash artifacts
+.DS_Store
+Thumbs.db
+sysinfo.txt
+crashlytics-build.properties

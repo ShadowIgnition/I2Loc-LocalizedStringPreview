@@ -1,0 +1,9 @@
+* text=auto
+.gitattributes text eol=lf
+.gitignore text eol=lf
+*.cs text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.asmdef text eol=lf
+*.meta text eol=lf
+*.png binary
