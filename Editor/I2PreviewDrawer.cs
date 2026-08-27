@@ -8,17 +8,28 @@ using UnityEngine;
 [CustomPropertyDrawer(typeof(I2PreviewAttribute))]
 public class I2PreviewDrawer : PropertyDrawer
 {
-	const string RelativeTermPropertyPath = "mTerm";
 	const string InvalidPropertyMessage =
 		"I2Preview requires an I2.Loc.LocalizedString field with valid serialized data.";
+	const string MixedValuesPreview = "— Multiple Values —";
+	const string TranslationUnavailablePreview = "Translation unavailable";
 	const int MaximumCachedPropertyCount = 512;
 	const float EstimatedInspectorPadding = 40f;
 
 	static readonly GUIContent InvalidPropertyContent = new GUIContent(InvalidPropertyMessage);
+	static readonly I2LocalizationBridge LocalizationEventBridge = new I2LocalizationBridge();
 
 	readonly I2LocalizationBridge m_Bridge = new I2LocalizationBridge();
 	readonly Dictionary<string, PreviewState> m_States =
 		new Dictionary<string, PreviewState>();
+	static int s_TranslationRevision;
+
+	static I2PreviewDrawer()
+	{
+		LocalizationEventBridge.TrySubscribeToLocalizationChanges(InvalidateTranslations);
+		Undo.undoRedoPerformed += InvalidateTranslations;
+		EditorApplication.projectChanged += InvalidateTranslations;
+		EditorApplication.playModeStateChanged += delegate { InvalidateTranslations(); };
+	}
 
 	public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
 	{
@@ -46,7 +57,7 @@ public class I2PreviewDrawer : PropertyDrawer
 			return;
 		}
 
-		state.SetTranslation(GetTranslation(property));
+		RefreshPreview(property, state);
 
 		GUIStyle style = EditorStyles.textArea;
 		float lineHeight = GetLineHeight(style);
@@ -89,7 +100,7 @@ public class I2PreviewDrawer : PropertyDrawer
 		}
 
 		PreviewState state = GetState(property);
-		state.SetTranslation(GetTranslation(property));
+		RefreshPreview(property, state);
 
 		GUIStyle style = EditorStyles.textArea;
 		float lineHeight = GetLineHeight(style);
@@ -122,18 +133,43 @@ public class I2PreviewDrawer : PropertyDrawer
 		return m_Bridge.IsLocalizedString(property, fieldInfo);
 	}
 
-	string GetTranslation(SerializedProperty property)
+	void RefreshPreview(SerializedProperty property, PreviewState state)
 	{
-		SerializedProperty termProperty = property.FindPropertyRelative(RelativeTermPropertyPath);
-		if (termProperty == null || string.IsNullOrWhiteSpace(termProperty.stringValue))
+		I2LocalizedStringData data;
+		bool hasMultipleDifferentValues;
+		if (!m_Bridge.TryReadData(property, out data, out hasMultipleDifferentValues))
 		{
-			return string.Empty;
+			state.SetPreview(
+				default(I2LocalizedStringData),
+				false,
+				string.Empty,
+				s_TranslationRevision,
+				TranslationUnavailablePreview);
+			return;
 		}
 
-		string translation;
-		return m_Bridge.TryGetTranslation(termProperty.stringValue, out translation)
-			? translation
-			: string.Empty;
+		string language = m_Bridge.CurrentLanguage;
+		if (state.IsCurrent(data, hasMultipleDifferentValues, language, s_TranslationRevision))
+		{
+			return;
+		}
+
+		string translation = MixedValuesPreview;
+		bool canCacheTranslation = true;
+		if (!hasMultipleDifferentValues &&
+			!m_Bridge.TryGetTranslation(data, out translation))
+		{
+			translation = TranslationUnavailablePreview;
+			canCacheTranslation = false;
+		}
+
+		state.SetPreview(
+			data,
+			hasMultipleDifferentValues,
+			language,
+			s_TranslationRevision,
+			translation,
+			canCacheTranslation);
 	}
 
 	float GetInvalidPropertyHeight(SerializedProperty property)
@@ -247,6 +283,14 @@ public class I2PreviewDrawer : PropertyDrawer
 		return key.ToString();
 	}
 
+	static void InvalidateTranslations()
+	{
+		unchecked
+		{
+			s_TranslationRevision++;
+		}
+	}
+
 	I2PreviewAttribute Attribute
 	{
 		get { return attribute as I2PreviewAttribute; }
@@ -264,18 +308,51 @@ public class I2PreviewDrawer : PropertyDrawer
 		internal float DesiredPreviewHeight;
 		internal float LastKnownWidth;
 
+		I2LocalizedStringData m_Data;
+		bool m_HasCachedTranslation;
+		bool m_HasMultipleDifferentValues;
+		string m_Language = string.Empty;
 		string m_Translation = string.Empty;
+		int m_TranslationRevision;
 
-		internal void SetTranslation(string translation)
+		internal bool IsCurrent(
+			I2LocalizedStringData data,
+			bool hasMultipleDifferentValues,
+			string language,
+			int translationRevision)
+		{
+			return m_HasCachedTranslation &&
+				m_Data.Equals(data) &&
+				m_HasMultipleDifferentValues == hasMultipleDifferentValues &&
+				string.Equals(m_Language, language ?? string.Empty, StringComparison.Ordinal) &&
+				m_TranslationRevision == translationRevision;
+		}
+
+		internal void SetPreview(
+			I2LocalizedStringData data,
+			bool hasMultipleDifferentValues,
+			string language,
+			int translationRevision,
+			string translation,
+			bool canCacheTranslation = true)
 		{
 			translation = translation ?? string.Empty;
-			if (string.Equals(m_Translation, translation, StringComparison.Ordinal))
+			bool displayedTextChanged =
+				!string.Equals(m_Translation, translation, StringComparison.Ordinal);
+
+			m_Data = data;
+			m_HasCachedTranslation = canCacheTranslation;
+			m_HasMultipleDifferentValues = hasMultipleDifferentValues;
+			m_Language = language ?? string.Empty;
+			m_TranslationRevision = translationRevision;
+			m_Translation = translation;
+			Content.text = translation;
+
+			if (!displayedTextChanged)
 			{
 				return;
 			}
 
-			m_Translation = translation;
-			Content.text = translation;
 			ScrollPosition = Vector2.zero;
 		}
 	}
