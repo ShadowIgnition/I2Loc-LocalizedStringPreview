@@ -1,171 +1,282 @@
 // https://github.com/ShadowIgnition/I2Loc-LocalizedStringPreview
+using System;
+using System.Collections.Generic;
+using System.Text;
 using UnityEditor;
 using UnityEngine;
 
 [CustomPropertyDrawer(typeof(I2PreviewAttribute))]
 public class I2PreviewDrawer : PropertyDrawer
 {
-	/// <summary>
-	/// Draws the GUI elements for the property, then draws the GUI elements for the preview.
-	/// </summary>
-	/// <param name="rect">The position and size of the GUI element.</param>
-	/// <param name="property">The serialized property to draw.</param>
-	/// <param name="label">The label of the property.</param>
-	public override void OnGUI(Rect rect, SerializedProperty property, GUIContent label)
+	const string RelativeTermPropertyPath = "mTerm";
+	const string InvalidPropertyMessage =
+		"I2Preview requires an I2.Loc.LocalizedString field with valid serialized data.";
+	const int MaximumCachedPropertyCount = 512;
+	const float EstimatedInspectorPadding = 40f;
+
+	static readonly GUIContent InvalidPropertyContent = new GUIContent(InvalidPropertyMessage);
+
+	readonly I2LocalizationBridge m_Bridge = new I2LocalizationBridge();
+	readonly Dictionary<string, PreviewState> m_States =
+		new Dictionary<string, PreviewState>();
+
+	public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
 	{
-		// Override the OnGUI method to draw the GUI elements for the property
+		PreviewState state = GetState(property);
+		state.LastKnownWidth = position.width;
 
-		// Set the height to a single line and try to draw the base property
-		rect.height = EditorGUIUtility.singleLineHeight;
-
-		// Check if the property type is valid
 		if (!IsValidType(property))
 		{
-			// If the type is invalid, display an error message in a help box
-			rect.position = new Vector2(rect.position.x, rect.position.y + EditorGUIUtility.singleLineHeight);
-			EditorGUI.HelpBox(rect, property.name + " type not supported, must be I2.Loc.LocalizedString", MessageType.Error);
+			EditorGUI.HelpBox(position, InvalidPropertyMessage, MessageType.Error);
 			return;
 		}
 
-		// Call the base implementation of OnGUI to draw the default property field
-		m_Bridge.OnGUI(rect, property, label, fieldInfo);
+		float baseHeight = m_Bridge.GetPropertyHeight(property, label, fieldInfo);
+		Rect baseRect = new Rect(
+			position.x,
+			position.y,
+			position.width,
+			Mathf.Min(baseHeight, position.height));
+		m_Bridge.OnGUI(baseRect, property, label, fieldInfo);
 
-		// Get the translation for the property
-		string translation = GetTranslation(property);
-
-		// Cache the height of the text area for the translation
-		CachePreviewHeight(translation, rect.width);
-
-		// Setup rect for description box
-		rect.position = new Vector2(rect.position.x, rect.position.y + rect.height);
-
-		if (m_Height != m_ScrollViewHeight)
+		float previewY = baseRect.yMax + EditorGUIUtility.standardVerticalSpacing;
+		float allocatedPreviewHeight = Mathf.Max(0f, position.yMax - previewY);
+		if (allocatedPreviewHeight <= 0f)
 		{
-			rect.height = m_Height;
-			Rect content = GetRect(rect, true);
-
-			// Adjust xMax to account for vertical scrollbar
-			content.xMax -= 14;
-
-			using (var scrollScope = new GUI.ScrollViewScope(rect, scrollPos, content))
-			{
-				scrollPos = scrollScope.scrollPosition;
-				GUI.Box(content, translation, EditorStyles.textArea);
-			}
+			return;
 		}
-		else
+
+		state.SetTranslation(GetTranslation(property));
+
+		GUIStyle style = EditorStyles.textArea;
+		float lineHeight = GetLineHeight(style);
+		Func<float, float> measureHeight = delegate(float width)
 		{
-			// Draw the translation in a text area
-			GUI.Box(GetRect(rect, false), translation, EditorStyles.textArea);
+			return style.CalcHeight(state.Content, width) + (lineHeight / 2f);
+		};
+
+		float desiredPreviewHeight = I2PreviewLayout.GetDesiredViewportHeight(
+			measureHeight,
+			position.width,
+			lineHeight,
+			RequestedLineCount);
+
+		if (!Mathf.Approximately(state.DesiredPreviewHeight, desiredPreviewHeight))
+		{
+			state.DesiredPreviewHeight = desiredPreviewHeight;
 		}
+
+		Rect previewRect = new Rect(
+			position.x,
+			previewY,
+			position.width,
+			allocatedPreviewHeight);
+		I2PreviewContentLayout contentLayout = I2PreviewLayout.GetContentLayout(
+			measureHeight,
+			previewRect.width,
+			previewRect.height,
+			lineHeight,
+			GetVerticalScrollbarWidth());
+
+		DrawPreview(previewRect, contentLayout, state, style);
 	}
 
-	/// <summary>
-	/// Gets the height of the property field, uses m_Height to adjust to the calculated size.
-	/// </summary>
-	/// <param name="property">The serialized property.</param>
-	/// <param name="label">The label of the property.</param>
-	/// <returns>The height of the property field.</returns>
 	public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
 	{
-		// Override the GetPropertyHeight method to specify the height of the property field
+		if (!IsValidType(property))
+		{
+			return GetInvalidPropertyHeight(property);
+		}
 
-		// Calculate the base height using the base implementation
-		// Add the height of the translation text area
-		return m_Bridge.GetPropertyHeight(property, label, fieldInfo) + m_Height;
+		PreviewState state = GetState(property);
+		state.SetTranslation(GetTranslation(property));
+
+		GUIStyle style = EditorStyles.textArea;
+		float lineHeight = GetLineHeight(style);
+		float availableWidth = state.LastKnownWidth > 0f
+			? state.LastKnownWidth
+			: GetEstimatedInspectorWidth();
+		Func<float, float> measureHeight = delegate(float width)
+		{
+			return style.CalcHeight(state.Content, width) + (lineHeight / 2f);
+		};
+
+		state.DesiredPreviewHeight = I2PreviewLayout.GetDesiredViewportHeight(
+			measureHeight,
+			availableWidth,
+			lineHeight,
+			RequestedLineCount);
+
+		return m_Bridge.GetPropertyHeight(property, label, fieldInfo)
+			+ EditorGUIUtility.standardVerticalSpacing
+			+ state.DesiredPreviewHeight;
 	}
 
-	/// <summary>
-	/// Checks if the serialized property type is valid.
-	/// </summary>
-	/// <param name="property">The serialized property.</param>
-	/// <returns><c>true</c> if the type is valid; otherwise, <c>false</c>.</returns>
+	public override bool CanCacheInspectorGUI(SerializedProperty property)
+	{
+		return false;
+	}
+
 	bool IsValidType(SerializedProperty property)
 	{
-		// Check if the property type is valid (LocalizedString)
 		return m_Bridge.IsLocalizedString(property, fieldInfo);
 	}
 
-	/// <summary>
-	/// Gets the rect for drawing the translation area.
-	/// </summary>
-	/// <param name="position">The position of the drawer in the Inspector.</param>
-	/// <param name="isScrollView">Flag indicating if the drawer is part of a scroll view.</param>
-	/// <returns>The rect for drawing the translation area.</returns>
-	Rect GetRect(Rect position, bool isScrollView)
-	{
-		return new Rect(position.x, position.y, position.width, isScrollView ? m_ScrollViewHeight : m_Height);
-	}
-
-	/// <summary>
-	/// Gets the translation for the serialized property.
-	/// </summary>
-	/// <param name="property">The serialized property.</param>
-	/// <returns>The translation string.</returns>
 	string GetTranslation(SerializedProperty property)
 	{
-		// Get the term property and the translation for the description box
-		SerializedProperty termProp = property.FindPropertyRelative(RelativeTermPropertyPath);
-
-		string translation = string.Empty;
-
-		// Skip translation if the term is null or empty
-		if (!string.IsNullOrWhiteSpace(termProp.stringValue))
+		SerializedProperty termProperty = property.FindPropertyRelative(RelativeTermPropertyPath);
+		if (termProperty == null || string.IsNullOrWhiteSpace(termProperty.stringValue))
 		{
-			// Retrieve the translation from the LocalizationManager based on the term
-			m_Bridge.TryGetTranslation(termProp.stringValue, out translation);
+			return string.Empty;
 		}
 
-		return translation;
+		string translation;
+		return m_Bridge.TryGetTranslation(termProperty.stringValue, out translation)
+			? translation
+			: string.Empty;
 	}
 
-	/// <summary>
-	/// Caches the height of the translation text area.
-	/// </summary>
-	/// <param name="translation">The translation string.</param>
-	/// <param name="width">The width of the text area.</param>
-	void CachePreviewHeight(string translation, float width)
+	float GetInvalidPropertyHeight(SerializedProperty property)
 	{
-		if (Attribute.LineHeight > 0)
-		{
-			// If a custom line height is specified, use it
-			m_Height = GetPaddedLineHeight(Attribute.LineHeight);
-			m_ScrollViewHeight = m_Height;
-		}
-		else
-		{
-			// Calculate the height of the text area
-			m_Height = GUI.skin.textArea.CalcHeight(new GUIContent(translation), width) + (GUI.skin.textArea.lineHeight / 2);
-
-			// Store the unclamped height, so we can use for a scroll view later if needed
-			m_ScrollViewHeight = m_Height;
-
-			// Clamp the height within the specified range (Don't want to be able to make the editor preview too big)
-			m_Height = Mathf.Clamp(m_Height, GetPaddedLineHeight(AUTO_MIN_HEIGHT), GetPaddedLineHeight(AUTO_MAX_HEIGHT));
-		}
+		PreviewState state = GetState(property);
+		float availableWidth = state.LastKnownWidth > 0f
+			? state.LastKnownWidth
+			: GetEstimatedInspectorWidth();
+		return Mathf.Max(
+			EditorGUIUtility.singleLineHeight * 3f,
+			EditorStyles.helpBox.CalcHeight(InvalidPropertyContent, availableWidth));
 	}
 
-	/// <summary>
-	/// Gets the padded line height based on the number of lines.
-	/// </summary>
-	/// <param name="lineCount">The number of lines.</param>
-	/// <returns>The padded line height.</returns>
-	float GetPaddedLineHeight(uint lineCount)
+	static void DrawPreview(
+		Rect previewRect,
+		I2PreviewContentLayout contentLayout,
+		PreviewState state,
+		GUIStyle style)
 	{
-		return (GUI.skin.textArea.lineHeight * lineCount) + (GUI.skin.textArea.lineHeight / 2);
+		if (!contentLayout.NeedsScrolling)
+		{
+			state.ScrollPosition = Vector2.zero;
+			GUI.Box(previewRect, state.Content, style);
+			return;
+		}
+
+		float maximumScrollY = Mathf.Max(0f, contentLayout.ContentHeight - previewRect.height);
+		state.ScrollPosition.y = Mathf.Clamp(state.ScrollPosition.y, 0f, maximumScrollY);
+		state.ScrollPosition.x = 0f;
+
+		Rect contentRect = new Rect(
+			0f,
+			0f,
+			contentLayout.ContentWidth,
+			contentLayout.ContentHeight);
+		state.ScrollPosition = GUI.BeginScrollView(
+			previewRect,
+			state.ScrollPosition,
+			contentRect,
+			false,
+			true);
+		GUI.Box(contentRect, state.Content, style);
+		GUI.EndScrollView();
 	}
 
-	Vector2 scrollPos; // Current Scroll position
-	float m_Height;  // Height of the translation text area
-	float m_ScrollViewHeight;  // Height of the translation text area
-	readonly I2LocalizationBridge m_Bridge = new I2LocalizationBridge();
+	static float GetLineHeight(GUIStyle style)
+	{
+		return style.lineHeight > 0f
+			? style.lineHeight
+			: EditorGUIUtility.singleLineHeight;
+	}
 
-	const uint AUTO_MAX_HEIGHT = 5;  // Maximum number of lines for the text area
-	const uint AUTO_MIN_HEIGHT = 2;  // Minimum number of lines for the text area
-	const string RelativeTermPropertyPath = "mTerm";  // Relative path to the term property
+	static float GetVerticalScrollbarWidth()
+	{
+		GUIStyle scrollbar = GUI.skin == null ? null : GUI.skin.verticalScrollbar;
+		if (scrollbar == null)
+		{
+			return EditorGUIUtility.singleLineHeight;
+		}
 
-	/// <summary>
-	/// Gets the <see cref="I2PreviewAttribute"/> associated with this drawer.
-	/// </summary>
-	I2PreviewAttribute Attribute { get { return attribute as I2PreviewAttribute; } }
+		float width = scrollbar.fixedWidth;
+		if (width <= 0f)
+		{
+			width = scrollbar.CalcSize(GUIContent.none).x;
+		}
+
+		if (width <= 0f)
+		{
+			width = EditorGUIUtility.singleLineHeight;
+		}
+
+		return Mathf.Max(0f, width + scrollbar.margin.left + scrollbar.margin.right);
+	}
+
+	static float GetEstimatedInspectorWidth()
+	{
+		return Mathf.Max(1f, EditorGUIUtility.currentViewWidth - EstimatedInspectorPadding);
+	}
+
+	PreviewState GetState(SerializedProperty property)
+	{
+		string key = GetStateKey(property);
+		PreviewState state;
+		if (m_States.TryGetValue(key, out state))
+		{
+			return state;
+		}
+
+		if (m_States.Count >= MaximumCachedPropertyCount)
+		{
+			m_States.Clear();
+		}
+
+		state = new PreviewState();
+		m_States.Add(key, state);
+		return state;
+	}
+
+	static string GetStateKey(SerializedProperty property)
+	{
+		UnityEngine.Object[] targets = property.serializedObject.targetObjects;
+		StringBuilder key = new StringBuilder((targets.Length * 12) + property.propertyPath.Length + 1);
+		for (int i = 0; i < targets.Length; i++)
+		{
+			key.Append(targets[i] == null ? 0 : targets[i].GetInstanceID());
+			key.Append(',');
+		}
+
+		key.Append('|');
+		key.Append(property.propertyPath);
+		return key.ToString();
+	}
+
+	I2PreviewAttribute Attribute
+	{
+		get { return attribute as I2PreviewAttribute; }
+	}
+
+	uint RequestedLineCount
+	{
+		get { return Attribute == null ? 0 : Attribute.LineHeight; }
+	}
+
+	sealed class PreviewState
+	{
+		internal readonly GUIContent Content = new GUIContent(string.Empty);
+		internal Vector2 ScrollPosition;
+		internal float DesiredPreviewHeight;
+		internal float LastKnownWidth;
+
+		string m_Translation = string.Empty;
+
+		internal void SetTranslation(string translation)
+		{
+			translation = translation ?? string.Empty;
+			if (string.Equals(m_Translation, translation, StringComparison.Ordinal))
+			{
+				return;
+			}
+
+			m_Translation = translation;
+			Content.text = translation;
+			ScrollPosition = Vector2.zero;
+		}
+	}
 }
