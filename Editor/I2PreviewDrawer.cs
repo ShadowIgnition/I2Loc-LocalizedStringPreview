@@ -15,6 +15,7 @@ public class I2PreviewDrawer : PropertyDrawer
 	const string TranslationUnavailablePreview = "Translation unavailable";
 	const int MaximumCachedPropertyCount = 512;
 	const float EstimatedInspectorPadding = 40f;
+	const float I2TrailingControlsWidth = 50f;
 	const float SearchButtonSpacing = 2f;
 
 	static readonly GUIContent InvalidPropertyContent = new GUIContent(InvalidPropertyMessage);
@@ -50,20 +51,7 @@ public class I2PreviewDrawer : PropertyDrawer
 			position.y,
 			position.width,
 			Mathf.Min(baseHeight, position.height));
-		Rect fieldRect;
-		Rect searchButtonRect;
-		if (TryGetSearchRects(baseRect, out fieldRect, out searchButtonRect))
-		{
-			state.Bridge.OnGUI(fieldRect, property, label, fieldInfo);
-			if (GUI.Button(searchButtonRect, SearchButtonContent))
-			{
-				OpenTermSearch(searchButtonRect, property, state);
-			}
-		}
-		else
-		{
-			state.Bridge.OnGUI(baseRect, property, label, fieldInfo);
-		}
+		DrawLocalizedStringField(baseRect, property, label, state);
 
 		float previewY = baseRect.yMax + EditorGUIUtility.standardVerticalSpacing;
 		float allocatedPreviewHeight = Mathf.Max(0f, position.yMax - previewY);
@@ -239,6 +227,79 @@ public class I2PreviewDrawer : PropertyDrawer
 			: EditorGUIUtility.singleLineHeight;
 	}
 
+	void DrawLocalizedStringField(
+		Rect position,
+		SerializedProperty property,
+		GUIContent label,
+		PreviewState state)
+	{
+		bool hasNativeDrawer = state.Bridge.HasNativeDrawer(fieldInfo);
+		float trailingControlsWidth = hasNativeDrawer ? I2TrailingControlsWidth : 0f;
+		Rect termRect;
+		Rect searchButtonRect;
+		Rect trailingControlsRect;
+		if (!TryGetSearchRects(
+				position,
+				trailingControlsWidth,
+				out termRect,
+				out searchButtonRect,
+				out trailingControlsRect))
+		{
+			state.Bridge.OnGUI(position, property, label, fieldInfo);
+			return;
+		}
+
+		if (hasNativeDrawer)
+		{
+			Rect termDrawerRect = position;
+			termDrawerRect.xMax = termRect.xMax + I2TrailingControlsWidth;
+			DrawBridgeInGroup(
+				termRect,
+				termDrawerRect,
+				property,
+				label,
+				state);
+			DrawBridgeInGroup(
+				trailingControlsRect,
+				position,
+				property,
+				GUIContent.none,
+				state);
+		}
+		else
+		{
+			state.Bridge.OnGUI(termRect, property, label, fieldInfo);
+		}
+
+		if (GUI.Button(searchButtonRect, SearchButtonContent))
+		{
+			OpenTermSearch(searchButtonRect, property, state);
+		}
+	}
+
+	void DrawBridgeInGroup(
+		Rect groupRect,
+		Rect drawerRect,
+		SerializedProperty property,
+		GUIContent label,
+		PreviewState state)
+	{
+		GUI.BeginGroup(groupRect);
+		try
+		{
+			Rect localDrawerRect = new Rect(
+				drawerRect.x - groupRect.x,
+				drawerRect.y - groupRect.y,
+				drawerRect.width,
+				drawerRect.height);
+			state.Bridge.OnGUI(localDrawerRect, property, label, fieldInfo);
+		}
+		finally
+		{
+			GUI.EndGroup();
+		}
+	}
+
 	void OpenTermSearch(
 		Rect buttonRect,
 		SerializedProperty property,
@@ -282,28 +343,38 @@ public class I2PreviewDrawer : PropertyDrawer
 	}
 
 	static bool TryGetSearchRects(
-		Rect baseRect,
-		out Rect fieldRect,
-		out Rect searchButtonRect)
+		Rect rowRect,
+		float trailingControlsWidth,
+		out Rect termRect,
+		out Rect searchButtonRect,
+		out Rect trailingControlsRect)
 	{
-		float buttonSize = Mathf.Min(EditorGUIUtility.singleLineHeight, baseRect.height);
-		if (buttonSize <= 0f || baseRect.width <= buttonSize + SearchButtonSpacing + 1f)
+		float buttonSize = Mathf.Min(EditorGUIUtility.singleLineHeight, rowRect.height);
+		float requiredWidth =
+			trailingControlsWidth + buttonSize + SearchButtonSpacing + 1f;
+		if (buttonSize <= 0f || trailingControlsWidth < 0f || rowRect.width <= requiredWidth)
 		{
-			fieldRect = baseRect;
+			termRect = rowRect;
 			searchButtonRect = default(Rect);
+			trailingControlsRect = default(Rect);
 			return false;
 		}
 
+		trailingControlsRect = new Rect(
+			rowRect.xMax - trailingControlsWidth,
+			rowRect.y,
+			trailingControlsWidth,
+			rowRect.height);
 		searchButtonRect = new Rect(
-			baseRect.xMax - buttonSize,
-			baseRect.y,
+			trailingControlsRect.x - buttonSize,
+			rowRect.y,
 			buttonSize,
 			buttonSize);
-		fieldRect = new Rect(
-			baseRect.x,
-			baseRect.y,
-			searchButtonRect.x - SearchButtonSpacing - baseRect.x,
-			baseRect.height);
+		termRect = new Rect(
+			rowRect.x,
+			rowRect.y,
+			searchButtonRect.x - SearchButtonSpacing - rowRect.x,
+			rowRect.height);
 		return true;
 	}
 

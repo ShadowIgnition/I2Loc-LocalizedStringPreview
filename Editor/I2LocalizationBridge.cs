@@ -168,6 +168,15 @@ internal sealed class I2LocalizationBridge
 	}
 
 	/// <summary>
+	/// Reports whether I2's native LocalizedString drawer is available.
+	/// </summary>
+	public bool HasNativeDrawer(FieldInfo ownerFieldInfo)
+	{
+		EnsureInitialized(ownerFieldInfo);
+		return m_LocalizedStringDrawer != null;
+	}
+
+	/// <summary>
 	/// Draws I2's native LocalizedString selector, falling back to the serialized term field.
 	/// </summary>
 	public void OnGUI(Rect position, SerializedProperty property, GUIContent label, FieldInfo ownerFieldInfo)

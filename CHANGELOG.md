@@ -20,6 +20,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Made automatic sizing responsive to the actual Inspector width and the active skin's scrollbar.
 - Limited explicit preview heights to 20 rows to prevent unusably large Inspectors.
 - Loaded a fresh list of registered I2 terms whenever the picker opens, removing blank and duplicate identifiers and sorting the result deterministically.
+- Placed the search control directly beside the term dropdown while preserving I2's native explore and RTL controls.
 
 ### Fixed
 
