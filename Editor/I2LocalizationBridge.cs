@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEditor;
@@ -33,6 +34,7 @@ internal sealed class I2LocalizationBridge
 	FieldInfo m_ConvertNumbersField;
 	FieldInfo m_DontLocalizeParametersField;
 	PropertyInfo m_CurrentLanguageProperty;
+	MethodInfo m_GetTermsListMethod;
 	EventInfo m_LocalizationChangedEvent;
 	PropertyDrawer m_LocalizedStringDrawer;
 
@@ -264,6 +266,58 @@ internal sealed class I2LocalizationBridge
 		}
 	}
 
+	/// <summary>
+	/// Gets a fresh, deterministic snapshot of the terms currently registered with I2.
+	/// </summary>
+	public bool TryGetTerms(out List<string> terms)
+	{
+		EnsureInitialized(null);
+		terms = new List<string>();
+		if (m_GetTermsListMethod == null)
+		{
+			return false;
+		}
+
+		try
+		{
+			ParameterInfo[] parameters = m_GetTermsListMethod.GetParameters();
+			object[] arguments = null;
+			if (parameters.Length > 0)
+			{
+				arguments = new object[parameters.Length];
+				for (int i = 0; i < parameters.Length; i++)
+				{
+					arguments[i] = parameters[i].IsOptional ? Type.Missing : null;
+				}
+			}
+
+			IEnumerable reflectedTerms = m_GetTermsListMethod.Invoke(null, arguments) as IEnumerable;
+			if (reflectedTerms == null)
+			{
+				return false;
+			}
+
+			HashSet<string> uniqueTerms = new HashSet<string>(StringComparer.Ordinal);
+			foreach (object value in reflectedTerms)
+			{
+				string term = value as string;
+				if (!string.IsNullOrWhiteSpace(term))
+				{
+					uniqueTerms.Add(term);
+				}
+			}
+
+			terms.AddRange(uniqueTerms);
+			terms.Sort(CompareTerms);
+			return true;
+		}
+		catch
+		{
+			terms.Clear();
+			return false;
+		}
+	}
+
 	void EnsureInitialized(FieldInfo ownerFieldInfo)
 	{
 		if (!m_Initialized)
@@ -290,6 +344,7 @@ internal sealed class I2LocalizationBridge
 			m_CurrentLanguageProperty = managerType == null
 				? null
 				: managerType.GetProperty("CurrentLanguage", BindingFlags.Static | BindingFlags.Public);
+			m_GetTermsListMethod = FindGetTermsListMethod(managerType);
 			m_LocalizationChangedEvent = managerType == null
 				? null
 				: managerType.GetEvent(
@@ -322,6 +377,65 @@ internal sealed class I2LocalizationBridge
 				// does not require fieldInfo, so drawing can continue without it.
 			}
 		}
+	}
+
+	static int CompareTerms(string left, string right)
+	{
+		int comparison = StringComparer.OrdinalIgnoreCase.Compare(left, right);
+		return comparison != 0
+			? comparison
+			: StringComparer.Ordinal.Compare(left, right);
+	}
+
+	static MethodInfo FindGetTermsListMethod(Type managerType)
+	{
+		if (managerType == null)
+		{
+			return null;
+		}
+
+		MethodInfo bestMethod = null;
+		MethodInfo[] methods = managerType.GetMethods(BindingFlags.Static | BindingFlags.Public);
+		for (int i = 0; i < methods.Length; i++)
+		{
+			MethodInfo method = methods[i];
+			if (method.Name != "GetTermsList" ||
+				method.ReturnType == typeof(string) ||
+				!typeof(IEnumerable).IsAssignableFrom(method.ReturnType))
+			{
+				continue;
+			}
+
+			ParameterInfo[] parameters = method.GetParameters();
+			if (parameters.Length == 0)
+			{
+				return method;
+			}
+
+			bool allParametersOptional = true;
+			for (int parameterIndex = 0;
+				parameterIndex < parameters.Length;
+				parameterIndex++)
+			{
+				if (!parameters[parameterIndex].IsOptional)
+				{
+					allParametersOptional = false;
+					break;
+				}
+			}
+
+			bool supported =
+				(parameters.Length == 1 && parameters[0].ParameterType == typeof(string)) ||
+				allParametersOptional;
+
+			if (supported &&
+				(bestMethod == null || parameters.Length < bestMethod.GetParameters().Length))
+			{
+				bestMethod = method;
+			}
+		}
+
+		return bestMethod;
 	}
 
 	static FieldInfo GetInstanceField(Type type, string fieldName)

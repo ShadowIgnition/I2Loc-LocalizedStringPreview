@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using UnityEditor;
+using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 
 [CustomPropertyDrawer(typeof(I2PreviewAttribute))]
@@ -14,9 +15,11 @@ public class I2PreviewDrawer : PropertyDrawer
 	const string TranslationUnavailablePreview = "Translation unavailable";
 	const int MaximumCachedPropertyCount = 512;
 	const float EstimatedInspectorPadding = 40f;
+	const float SearchButtonSpacing = 2f;
 
 	static readonly GUIContent InvalidPropertyContent = new GUIContent(InvalidPropertyMessage);
 	static readonly I2LocalizationBridge LocalizationEventBridge = new I2LocalizationBridge();
+	static readonly GUIContent SearchButtonContent = CreateSearchButtonContent();
 
 	readonly Dictionary<string, PreviewState> m_States =
 		new Dictionary<string, PreviewState>();
@@ -47,7 +50,20 @@ public class I2PreviewDrawer : PropertyDrawer
 			position.y,
 			position.width,
 			Mathf.Min(baseHeight, position.height));
-		state.Bridge.OnGUI(baseRect, property, label, fieldInfo);
+		Rect fieldRect;
+		Rect searchButtonRect;
+		if (TryGetSearchRects(baseRect, out fieldRect, out searchButtonRect))
+		{
+			state.Bridge.OnGUI(fieldRect, property, label, fieldInfo);
+			if (GUI.Button(searchButtonRect, SearchButtonContent))
+			{
+				OpenTermSearch(searchButtonRect, property, state);
+			}
+		}
+		else
+		{
+			state.Bridge.OnGUI(baseRect, property, label, fieldInfo);
+		}
 
 		float previewY = baseRect.yMax + EditorGUIUtility.standardVerticalSpacing;
 		float allocatedPreviewHeight = Mathf.Max(0f, position.yMax - previewY);
@@ -219,6 +235,74 @@ public class I2PreviewDrawer : PropertyDrawer
 		return style.lineHeight > 0f
 			? style.lineHeight
 			: EditorGUIUtility.singleLineHeight;
+	}
+
+	void OpenTermSearch(
+		Rect buttonRect,
+		SerializedProperty property,
+		PreviewState state)
+	{
+		I2TermSelectionTarget selectionTarget;
+		if (!I2TermSelectionTarget.TryCapture(property, out selectionTarget))
+		{
+			return;
+		}
+
+		List<string> terms;
+		bool isAvailable = state.Bridge.TryGetTerms(out terms);
+		I2TermSearchDropdown dropdown = new I2TermSearchDropdown(
+			new AdvancedDropdownState(),
+			terms,
+			isAvailable,
+			delegate(string selectedTerm)
+			{
+				EditorApplication.delayCall += delegate
+				{
+					if (!selectionTarget.TryApply(selectedTerm))
+					{
+						return;
+					}
+
+					InvalidateTranslations();
+					EditorApplication.QueuePlayerLoopUpdate();
+				};
+			});
+		dropdown.Show(buttonRect);
+	}
+
+	static GUIContent CreateSearchButtonContent()
+	{
+		const string tooltip = "Search I2 localization terms";
+		GUIContent icon = EditorGUIUtility.IconContent("Search Icon");
+		return icon == null || icon.image == null
+			? new GUIContent("…", tooltip)
+			: new GUIContent(icon.image, tooltip);
+	}
+
+	static bool TryGetSearchRects(
+		Rect baseRect,
+		out Rect fieldRect,
+		out Rect searchButtonRect)
+	{
+		float buttonSize = Mathf.Min(EditorGUIUtility.singleLineHeight, baseRect.height);
+		if (buttonSize <= 0f || baseRect.width <= buttonSize + SearchButtonSpacing + 1f)
+		{
+			fieldRect = baseRect;
+			searchButtonRect = default(Rect);
+			return false;
+		}
+
+		searchButtonRect = new Rect(
+			baseRect.xMax - buttonSize,
+			baseRect.y,
+			buttonSize,
+			buttonSize);
+		fieldRect = new Rect(
+			baseRect.x,
+			baseRect.y,
+			searchButtonRect.x - SearchButtonSpacing - baseRect.x,
+			baseRect.height);
+		return true;
 	}
 
 	static float GetVerticalScrollbarWidth()
